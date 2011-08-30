@@ -213,7 +213,7 @@ package kom.deferred {
         }
 
         public function update(data : * = null) : void {
-            fireFinalEvent(AbstractPromise.PROGRESS, data);
+            fireIntermediateEvent(AbstractPromise.PROGRESS, data);
         }
 
         public function cancel() : void {
