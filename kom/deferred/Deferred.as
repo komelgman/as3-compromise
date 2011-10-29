@@ -26,8 +26,12 @@
  */
 
 package kom.deferred {
+
+    import flash.utils.Dictionary;
     import flash.utils.clearTimeout;
     import flash.utils.setTimeout;
+
+    import kom.deferred.IPromise;
 
     import kom.exceptions.TimeoutError;
 
@@ -190,11 +194,11 @@ package kom.deferred {
         }
 
 
-        internal function fireFinalEvent(reason : String, data : * = null) : void {
+        public function fireFinalEvent(reason : String, data : * = null) : void {
             _promise.notifyAll(reason,  data, true);
         }
 
-        internal function fireIntermediateEvent(reason : String, data : * = null) : void {
+        public function fireIntermediateEvent(reason : String, data : * = null) : void {
             _promise.notifyAll(reason,  data, false);
         }
 
@@ -272,10 +276,14 @@ package kom.deferred {
 
             var process : Function = (processName == 'parallel') ? processParallel : processEarlier,
                 deferred : Deferred = new Deferred(),
-                num : int = 0,
-                result : Object = {};
+                result : Object = {},
+                inProcess : Dictionary = new Dictionary(),
+                processCount : int = 0,
+                batchProcessStoped : Boolean = false,
+                lock : Boolean = false,
+                i : *;
 
-            for (var i : * in deferredList) {
+            for (i in deferredList) {
                 if (!deferredList.hasOwnProperty(i)) {
                     continue;
                 }
@@ -294,54 +302,135 @@ package kom.deferred {
                     deferred.reject(new Error("unknown type"));
                 }
 
-                deferred.custom(CANCEL, obj.cancel);
-                process(obj, i);
+                addProcess(obj, i);
             }
 
-            if (!num) {
+            if (processCount == 0) {
                 Deferred.async(function () : void {
                     deferred.resolve(result);
                 });
-            }
-
-            return deferred.promise;
-
-            function processParallel(d : IPromise, i : *) : void {
-                num++;
-                d.then(
-                    function (v : *) : void {
-                        result[i] = v;
-
-                        if (--num <= 0) {
-                            deferred.resolve(result);
-                        }
-                    },
-                    deferred.reject
-                );
-            }
-
-            function processEarlier(d : IPromise, i : *) : void {
-                num++;
-                d.then(function (v : *) : void {
-                        result[i] = v;
-
-                        stopOther(i);
-
-                        deferred.resolve(result);
-                    },
-                    deferred.reject
-                );
-            }
-
-            function stopOther(i : *) : void {
-                for (var j : * in deferredList) {
-                    if (!deferredList.hasOwnProperty(i) || (i == j)) {
+            } else {
+                for (i in deferredList) {
+                    if (!deferredList.hasOwnProperty(i)) {
                         continue;
                     }
 
-                    deferredList[j].cancel();
+                    process(deferredList[i], i);
                 }
             }
+
+
+            return deferred.promise;
+
+
+
+
+
+            function addProcess(promise: IPromise, i : *) : void {
+                inProcess[i] = true;
+                processCount++;
+
+                deferred.custom(CANCEL, function() : void {
+                    if (delProcess(i)) {
+                        obj.cancel();
+                    }
+                });
+            }
+
+            function delProcess(i : *) : Boolean {
+                var result : Boolean = false;
+
+                while (!_delProcess()) {}
+
+                return result;
+
+                function _delProcess() : Boolean {
+                    if (!lock) {
+                        lock = true;
+
+                        if (i in inProcess) {
+                            delete inProcess[i];
+                            processCount--;
+                            result = true;
+                        }
+
+                        lock = false;
+                        return true;
+                    }
+
+                    return false;
+                }
+            }
+
+
+            function processParallel(promise : IPromise, i : *) : void {
+                promise.then(
+                    function (value : *) : void {
+                        if (delProcess(i)) {
+                            if (batchProcessStoped) {
+                                return;
+                            }
+
+                            result[i] = value;
+
+                            if (processCount == 0) {
+                                deferred.resolve(result);
+                            }
+                        }
+                    },
+                    function (error : *) : void {
+                        if (delProcess(i)) {
+                            // catch first error, other ignore
+                            if (batchProcessStoped) {
+                                return;
+                            }
+
+                            stopProcessing();
+
+                            deferred.reject(error);
+                        }
+                    }
+                );
+            }
+
+            function processEarlier(promise : IPromise, i : *) : void {
+                promise.then(
+                    function (v : *) : void {
+                        if (delProcess(i)) {
+                            if (batchProcessStoped) {
+                                return;
+                            }
+
+                            result[i] = v;
+
+                            deferred.resolve(result);
+                            stopProcessing();
+                        }
+                    },
+                    function (error : *) : void {
+                        if (delProcess(i)) {
+                            // catch first error, other ignore
+                            if (batchProcessStoped) {
+                                return;
+                            }
+
+                            stopProcessing();
+
+                            deferred.reject(error);
+                        }
+                    }
+                );
+            }
+
+            function stopProcessing() : void {
+                batchProcessStoped = true;
+                for (var i : * in deferredList) {
+                    if (delProcess(i)) {
+                        deferredList[i].cancel();
+                    }
+                }
+            }
+
         }
     }
 }
@@ -375,7 +464,11 @@ class Promise extends AbstractPromise {
         }
 
         if (finished) {
-            Deferred.async(callback, (reason == AbstractPromise.ALWAYS) ? {reason : this.reason, value : value} : value);
+            if (reason == AbstractPromise.ALWAYS) {
+                Deferred.async(callback, {reason : this.reason, value : value});
+            } else if (this.reason == reason) {
+                Deferred.async(callback, value);
+            }
         } else {
             addListener(reason, {callback : callback});
         }
@@ -404,7 +497,10 @@ class Promise extends AbstractPromise {
         _notifyAll(AbstractPromise.ALWAYS, {reason : reason,  value : data});
 
         function _notifyAll(reason : String, value : *) : void {
-            for (var i : int = 0, listeners : Array = getListeners(reason), n : int = listeners.length; i < n; ++i) {
+            var listeners : Array = getListeners(reason),
+                n : int = listeners.length;
+
+            for (var i : int = 0; i < n; ++i) {
                 Deferred.async(listeners[i].callback, value);
             }
         }
