@@ -25,7 +25,7 @@
  * THE SOFTWARE.
  */
 
-package kom.deferred {
+package kom.promise {
     public interface IDeferred {
         function resolve(data : * = null) : void;
         function reject(data : * = null) : void;

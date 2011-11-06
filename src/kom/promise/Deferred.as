@@ -25,13 +25,13 @@
  * THE SOFTWARE.
  */
 
-package kom.deferred {
+package kom.promise {
 
     import flash.utils.Dictionary;
     import flash.utils.clearTimeout;
     import flash.utils.setTimeout;
 
-    import kom.deferred.IPromise;
+    import kom.promise.IPromise;
 
     import kom.exceptions.TimeoutError;
 
@@ -441,10 +441,10 @@ package kom.deferred {
  */
 
 import flash.utils.Dictionary;
-import kom.deferred.AbstractPromise;
+import kom.promise.AbstractPromise;
 
-import kom.deferred.Deferred;
-import kom.deferred.IPromise;
+import kom.promise.Deferred;
+import kom.promise.IPromise;
 
 class Promise extends AbstractPromise {
     private var waiting : Dictionary = new Dictionary();

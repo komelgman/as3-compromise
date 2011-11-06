@@ -25,7 +25,7 @@
  * THE SOFTWARE.
  */
 
-package kom.deferred {
+package kom.promise {
     import flash.events.IEventDispatcher;
 
     public interface IPromise {

@@ -25,7 +25,7 @@
  * THE SOFTWARE.
  */
 
-package kom.deferred {
+package kom.promise {
     import kom.exceptions.AbstractMethodError;
 
     public class AbstractPromise implements IPromise{
