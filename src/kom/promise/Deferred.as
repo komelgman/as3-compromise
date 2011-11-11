@@ -57,6 +57,12 @@ package kom.promise {
             return obj is IPromise;
         }
 
+        public static function fakePromise() : IPromise {
+            var deferred : Deferred = new Deferred();
+            deferred.resolve();
+            return deferred.promise;
+        }
+
 
         /**
          * `wait` returns promise (IPromise) that will be called after `sec` elapsed
